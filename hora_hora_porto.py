@@ -4,14 +4,20 @@ import pyodbc
 from sqlalchemy import create_engine
 import streamlit as st
 import datetime
+import sys
 
 # ==============================================================================
-# CONFIGURAÇÕES DO BANCO DE DADOS
+# CONFIGURAÇÕES DO BANCO DE DADOS (Compatível com Windows Local e Streamlit Cloud Linux)
 # ==============================================================================
 server = "192.168.1.9"
 username = "sidnei.soares"
 password = "Trocarsenha@@5966"
-driver = "{ODBC Driver 18 for SQL Server}"
+
+# Detecta automaticamente o ambiente para aplicar o Driver correto
+if sys.platform == "win32":
+    driver = "{ODBC Driver 18 for SQL Server}"
+else:
+    driver = "{ODBC Driver 18 for SQL Server}" # Se der erro no Linux, pode testar alterar para "{ODBC Driver 17 for SQL Server}"
 
 # String de conexão
 conn_str = (
@@ -20,10 +26,10 @@ conn_str = (
     "Encrypt=yes;TrustServerCertificate=yes;"
 )
 
-
+# Força o Pandas a mostrar todas as colunas existentes sem cortar com "..."
 pd.set_option('display.max_columns', None)
 
-
+# Inicializa o df como None para garantir a segurança na execução
 df = None
 
 try:
@@ -66,15 +72,15 @@ try:
 except Exception as e:
     st.error(f"Erro ao processar a tabela no banco: {e}")
 
-
+# ==============================================================================
+# TRATAMENTO DE DADOS E RENDERIZAÇÃO INTERFACE
+# ==============================================================================
 if df is not None:
     
     # Converte a coluna original para datetime para o funcionamento do calendário
     df['DATA_TABULACAO_DT'] = pd.to_datetime(df['DATA_TABULACAO']).dt.date
     
-   
     # PAINÉIS DE FILTROS NA BARRA LATERAL (SIDEBAR)
-  
     st.sidebar.header("Filtros do Relatório")
     
     # 1. Filtro de Data
@@ -92,7 +98,7 @@ if df is not None:
     opcoes_faixa = sorted(base_filtrada['FAIXA_ATRASO'].dropna().unique().tolist())
     faixas_sel = st.sidebar.multiselect("Faixa Atraso", options=opcoes_faixa, default=opcoes_faixa)
     
-    # 4. Filtro de Célula / Nome (Multiselect)
+    # 4. Filtro de Célula / Atuação (Multiselect)
     opcoes_celula = sorted(base_filtrada['ATUACAO'].dropna().unique().tolist())
     celulas_sel = st.sidebar.multiselect("Célula", options=opcoes_celula, default=opcoes_celula)
     
@@ -121,7 +127,7 @@ if df is not None:
         # Criando a tabela dinâmica base fixada apenas em HORA com a linha de TOTAL GERAL
         dinamica = pd.pivot_table(
             df_filtrado,                                 
-            index='HORA',  # Removida a quebra variável, fixado em HORA
+            index='HORA',  
             values=colunas_numericas,     
             aggfunc='sum',
             margins=True,
@@ -158,9 +164,9 @@ if df is not None:
             'Reversão': '{:.2%}'
         }), use_container_width=True)
         
-        
+        # ----------------------------------------------------
         # EXIBIÇÃO EXPANDIDA DO QUADRO DE DADOS BRUTOS + LINHA DE TOTAL
-        
+        # ----------------------------------------------------
         # Formata a data para texto dd/mm/aaaa nas linhas comuns
         df_filtrado['DATA_TABULACAO'] = pd.to_datetime(df_filtrado['DATA_TABULACAO']).dt.strftime('%d/%m/%Y')
         df_exibicao = df_filtrado.drop(columns=['DATA_TABULACAO_DT'])
@@ -179,6 +185,10 @@ if df is not None:
         df_total_row = pd.DataFrame([linha_total])
         df_exibicao_com_total = pd.concat([df_exibicao, df_total_row], ignore_index=True)
 
+        st.subheader("📋 Quadro de Dados Brutos Filtrados (Visão Completa com Totais)")
+        
+        # AJUSTE FINAL: Desenha a tabela expandida aberta na tela sem cortes
+        st.table(df_exibicao_com_total)
          
     else:
         st.warning("Não foram encontrados dados com a combinação de filtros selecionada.")
