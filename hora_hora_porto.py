@@ -5,38 +5,83 @@ from sqlalchemy import create_engine
 import streamlit as st
 import datetime
 import sys
+import subprocess
+import time
 
 # ==============================================================================
-# CONFIGURAÇÕES DO BANCO DE DADOS (Compatível com Windows Local e Streamlit Cloud Linux)
+# CONFIGURAÇÕES DA VPN FORTICLIENT
+# ==============================================================================
+# Ajuste o caminho do executável CLI se for diferente no seu sistema
+FORTICLIENT_PATH = r"C:\Program Files\Fortinet\FortiClient\FortiSSLVPNsys.exe"
+VPN_SERVER = "remoto.dnr.com.br"  # Substitua pelo IP/Domínio e porta da sua VPN
+VPN_USER = "36246153860"
+VPN_PASS = "Trocarsenha@@9120"         # Lembrete: Use st.secrets por segurança depois!
+
+def conectar_vpn():
+    """Dispara o comando CLI para conectar ao FortiClient"""
+    comando = [
+        FORTICLIENT_PATH,
+        "--server", VPN_SERVER,
+        "--vpnuser", VPN_USER,
+        "--keepalive"
+    ]
+    try:
+        # Iniciando o processo enviando a senha via input
+        processo = subprocess.Popen(
+            comando, 
+            stdin=subprocess.PIPE, 
+            stdout=subprocess.PIPE, 
+            stderr=subprocess.PIPE, 
+            text=True
+        )
+        # Envia a senha para o prompt do FortiClient
+        processo.stdin.write(f"{VPN_PASS}\n")
+        processo.stdin.flush()
+        
+        # Aguarda alguns segundos para a VPN estabelecer o túnel de rede
+        time.sleep(8)
+        return processo
+    except Exception as e:
+        st.error(f"Falha ao iniciar o FortiClient: {e}")
+        return None
+
+def desconectar_vpn(processo_vpn):
+    """Encerra o processo da VPN de forma limpa"""
+    if processo_vpn:
+        processo_vpn.terminate()
+        processo_vpn.wait()
+
+# ==============================================================================
+# CONFIGURAÇÕES DO BANCO DE DADOS
 # ==============================================================================
 server = "192.168.1.9"
 username = "sidnei.soares"
 password = "Trocarsenha@@5966"
 
-# Detecta automaticamente o ambiente para aplicar o Driver correto
 if sys.platform == "win32":
     driver = "{ODBC Driver 18 for SQL Server}"
 else:
-    driver = "{ODBC Driver 18 for SQL Server}" # Se der erro no Linux, pode testar alterar para "{ODBC Driver 17 for SQL Server}"
+    driver = "{ODBC Driver 18 for SQL Server}"
 
-# String de conexão
 conn_str = (
     f"DRIVER={driver};SERVER={server};"
     f"UID={username};PWD={password};"
     "Encrypt=yes;TrustServerCertificate=yes;"
 )
 
-# Força o Pandas a mostrar todas as colunas existentes sem cortar com "..."
 pd.set_option('display.max_columns', None)
-
-# Inicializa o df como None para garantir a segurança na execução
 df = None
+
+# ==============================================================================
+# EXECUÇÃO DA CONEXÃO E QUERY (Cercado pelo ciclo de vida da VPN)
+# ==============================================================================
+# 1. Abre a VPN antes de tocar no banco de dados
+processo_ativo_vpn = conectar_vpn()
 
 try:
     params = urllib.parse.quote_plus(conn_str)
     engine = create_engine(f"mssql+pyodbc:///?odbc_connect={params}")
 
-    # Query SQL
     query = """
     SELECT 
         A.DATA_TABULACAO,
@@ -66,17 +111,21 @@ try:
         A.CLASSIFICACAO_NEGOCIO
     """
 
-    # Lendo os dados do banco
+    # Lendo os dados do banco enquanto a VPN está ativa
     df = pd.read_sql(query, engine)
 
 except Exception as e:
     st.error(f"Erro ao processar a tabela no banco: {e}")
 
+finally:
+    # 2. Garante que a VPN será fechada mesmo se a query falhar
+    desconectar_vpn(processo_ativo_vpn)
+
+
 # ==============================================================================
 # TRATAMENTO DE DADOS E RENDERIZAÇÃO INTERFACE
 # ==============================================================================
 if df is not None:
-    
     # Converte a coluna original para datetime para o funcionamento do calendário
     df['DATA_TABULACAO_DT'] = pd.to_datetime(df['DATA_TABULACAO']).dt.date
     
@@ -184,11 +233,6 @@ if df is not None:
         
         df_total_row = pd.DataFrame([linha_total])
         df_exibicao_com_total = pd.concat([df_exibicao, df_total_row], ignore_index=True)
-
-        st.subheader("📋 Quadro de Dados Brutos Filtrados (Visão Completa com Totais)")
         
-        # AJUSTE FINAL: Desenha a tabela expandida aberta na tela sem cortes
-        st.table(df_exibicao_com_total)
-         
     else:
         st.warning("Não foram encontrados dados com a combinação de filtros selecionada.")
