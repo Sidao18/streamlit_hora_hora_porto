@@ -13,12 +13,12 @@ import time
 # ==============================================================================
 # Ajuste o caminho do executável CLI se for diferente no seu sistema
 FORTICLIENT_PATH = r"C:\Program Files\Fortinet\FortiClient\FortiSSLVPNsys.exe"
-VPN_SERVER = "remoto.dnr.com.br"  # Substitua pelo IP/Domínio e porta da sua VPN
+VPN_SERVER = "remoto.dnr.com.br"  # IP/Domínio e porta da sua VPN
 VPN_USER = "36246153860"
-VPN_PASS = "Trocarsenha@@9120"         # Lembrete: Use st.secrets por segurança depois!
+VPN_PASS = "Trocarsenha@@9120" 
 
 def conectar_vpn():
-    """Dispara o comando CLI para conectar ao FortiClient"""
+    """Dispara o comando CLI para conectar ao FortiClient silenciosamente"""
     comando = [
         FORTICLIENT_PATH,
         "--server", VPN_SERVER,
@@ -46,7 +46,7 @@ def conectar_vpn():
         return None
 
 def desconectar_vpn(processo_vpn):
-    """Encerra o processo da VPN de forma limpa"""
+    """Encerra o processo da VPN de forma limpa em segundo plano"""
     if processo_vpn:
         processo_vpn.terminate()
         processo_vpn.wait()
@@ -73,9 +73,9 @@ pd.set_option('display.max_columns', None)
 df = None
 
 # ==============================================================================
-# EXECUÇÃO DA CONEXÃO E QUERY (Cercado pelo ciclo de vida da VPN)
+# EXECUÇÃO DA CONEXÃO E QUERY (Ciclo de vida silencioso da VPN)
 # ==============================================================================
-# 1. Abre a VPN antes de tocar no banco de dados
+# 1. Abre a VPN antes de consultar o banco de dados
 processo_ativo_vpn = conectar_vpn()
 
 try:
@@ -233,6 +233,7 @@ if df is not None:
         
         df_total_row = pd.DataFrame([linha_total])
         df_exibicao_com_total = pd.concat([df_exibicao, df_total_row], ignore_index=True)
+        
         
     else:
         st.warning("Não foram encontrados dados com a combinação de filtros selecionada.")
